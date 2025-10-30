@@ -19,7 +19,9 @@ if not API_KEY:
     raise RuntimeError("Missing GOOGLE_PLACES_API_KEY in .env")
 
 # Basic endpoints
+# https://developers.google.com/maps/documentation/places/web-service/legacy/search-text
 TEXT_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json" # Find candidates; text search for places by query, returns a list of place results with summary fields per place
+# https://developers.google.com/maps/documentation/places/web-service/legacy/details
 DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json" # Fetch detail info for a single place by place_id, we will use after we get candidate place_id's
 
 # We'll need to run the search below multiple times and create a set of places

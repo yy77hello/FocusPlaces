@@ -1,0 +1,51 @@
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# PyCharm
+.idea/
+*.iml
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Byte-compiled / cache
+__pycache__/
+*.pyc
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# dotenv local env files
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# SQLite
+*.db
+*.sqlite3
+*.sqlite
+
+# Streamlit cache
+.streamlit/
+
+# VS Code
+.vscode/
+
+# API key / credentials files
+google_credentials.json
+service_account.json

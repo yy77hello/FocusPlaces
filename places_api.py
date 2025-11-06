@@ -1,5 +1,4 @@
 """
-
  - Loads GOOGLE_PLACES_API_KEY from .env
  - Runs a Text Search for a query near a location (or by text)
  - Fetches Place Details (including reviews) for top candidates
@@ -24,6 +23,12 @@ TEXT_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json" #
 # https://developers.google.com/maps/documentation/places/web-service/legacy/details
 DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json" # Fetch detail info for a single place by place_id, we will use after we get candidate place_id's
 
+# Call Text Search endpoint and return parsed json
+def make_textsearch_request(params):
+    resp = requests.get(TEXT_SEARCH_URL, params=params)
+    resp.raise_for_status()
+    return resp.json()
+
 # We'll need to run the search below multiple times and create a set of places
 
 # Text Search to find candidate places
@@ -32,34 +37,53 @@ def text_search(query, location=None, radius=5000, max_results=10):
     query: string, e.g., "coffee shop" or "library near Penn State"
     location: optional tuple (lat, lng)
     radius: meters
-    max_results: number of place results to return (client-side limit)
+    max_results: total number of place results to gather across pages (default 10)
     """
-    params = { # included in api call to maps api endpoint
+    candidates = []
+    # initial params for first page
+    params = {
         "query": query,
         "key": API_KEY,
     }
+
     # If location provided, include location & radius to bias results
     if location:
         lat, lng = location
         params["location"] = f"{lat},{lng}"
         params["radius"] = radius
 
-    resp = requests.get(TEXT_SEARCH_URL, params=params) # api call
-    resp.raise_for_status() # check api response status
-    data = resp.json() # store json response
+    remaining = max_results  # single control variable for how many total results we want
+    next_token = None # init
+    while True:
+        # if we have a next_page_token, request by pagetoken only (per API)
+        if next_token:
+            params = {"pagetoken": next_token, "key": API_KEY}
+        data = make_textsearch_request(params)
+        results = data.get("results", [])  # page results
+        # append results up to remaining
+        for r in results:
+            if remaining <= 0:
+                break
+            candidates.append({
+                "name": r.get("name"),
+                "place_id": r.get("place_id"),
+                "rating": r.get("rating"),
+                "user_ratings_total": r.get("user_ratings_total"),
+                "location": r.get("geometry", {}).get("location"),
+                "formatted_address": r.get("formatted_address"),
+            })
+            remaining -= 1
+        # stop if we reached the requested total
+        if remaining <= 0:
+            break
+        # check for next_page_token
+        next_token = data.get("next_page_token")
+        if not next_token:
+            break
+        # next_page_token may take a short time to become valid; wait then loop
+        time.sleep(2)  # often 2s is enough; increase if you get INVALID_REQUEST
+        # continue loop to fetch next page using next_token
 
-    results = data.get("results", [])[:max_results] # Limit results to our limit of max results
-    # Return info for each result
-    candidates = []
-    for r in results:
-        candidates.append({ # transfer json inputs for each candidate into, list of dictionaries
-            "name": r.get("name"),
-            "place_id": r.get("place_id"),
-            "rating": r.get("rating"),
-            "user_ratings_total": r.get("user_ratings_total"),
-            "location": r.get("geometry", {}).get("location"),
-            "formatted_address": r.get("formatted_address"),
-        })
     return candidates
 
 # Place details, single place reviews
@@ -106,7 +130,7 @@ def example_flow():
     query = "coffee shop"             # place type / query
     location = None                   # auto-detect, alternatively provide lat long
     radius = 10000                    # overwrite method parameter
-    max_candidates = 5
+    max_candidates = 20                # override default if desired
 
     print("Searching for:", query)
     # call api through text_search

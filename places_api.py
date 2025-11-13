@@ -45,6 +45,8 @@ def text_search(query, location=None, radius=5000, max_results=10):
         "query": query,
         "key": API_KEY,
     }
+
+    # If a location is provided, include location and radius to bias results nearby.
     if location:
         lat, lng = location
         params["location"] = f"{lat},{lng}"
@@ -53,13 +55,16 @@ def text_search(query, location=None, radius=5000, max_results=10):
     remaining = max_results
     next_token = None
     while True:
+        # If we have a next_page_token the API expects only the token + api key for that request.
         if next_token:
             params = {"pagetoken": next_token, "key": API_KEY}
         data = make_textsearch_request(params)
         results = data.get("results", [])
+        # Iterate over results and add them to candidates until we reached max_results.
         for r in results:
             if remaining <= 0:
                 break
+            # Extract only the fields we need
             candidates.append({
                 "name": r.get("name"),
                 "place_id": r.get("place_id"),
@@ -69,9 +74,11 @@ def text_search(query, location=None, radius=5000, max_results=10):
                 "formatted_address": r.get("formatted_address"),
             })
             remaining -= 1
+        # Enough candidates collected so stop paging
         if remaining <= 0:
             break
         next_token = data.get("next_page_token")
+        # No more pages available from the API
         if not next_token:
             break
         time.sleep(2)
@@ -80,8 +87,14 @@ def text_search(query, location=None, radius=5000, max_results=10):
 # Place details, single place reviews
 def fetch_place_details(place_id, max_reviews=5):
     """
-    place_id: Google Place ID
-    returns: dict with basic fields plus 'reviews' (list) if available
+    Fetch detailed information for a single place using its place_id
+    Parameters
+      - place_id: Google Place ID string
+      - max_reviews: how many of the place's reviews to return (API may return more)
+    Returns
+      - dict containing name, place_id, rating, formatted_address, location, and a 'reviews' list.
+
+    We request a small set of fields from the Places Details API to reduce payload
     """
     params = {
         "place_id": place_id,
@@ -92,6 +105,7 @@ def fetch_place_details(place_id, max_reviews=5):
     resp.raise_for_status()
     data = resp.json()
     result = data.get("result", {})
+    # Normalize the reviews structure
     reviews = []
     for rev in result.get("reviews", [])[:max_reviews]:
         reviews.append({

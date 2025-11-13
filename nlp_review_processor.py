@@ -16,6 +16,8 @@ from collections import Counter
 import math
 import spacy
 
+# Load the small English spaCy model. We disable NER because it's not needed here and
+# disabling saves some load-time and memory.
 nlp = spacy.load("en_core_web_sm", disable=["ner"])
 
 KEYWORD_WEIGHTS = {
@@ -43,9 +45,14 @@ KEYWORD_WEIGHTS = {
     "power outlet": ("outlet", 3.0),
 }
 
+# Regex to remove most punctuation but keep word characters, whitespace, hyphen, slash
 PUNCT_RE = re.compile(r"[^\w\s\-/]")
 
 def normalize_text(text):
+    """
+    Lowercase and remove unwanted punctuation
+    Collapse whitespace.
+    """
     if not text:
         return ""
     t = text.lower()

@@ -61,6 +61,14 @@ def normalize_text(text):
     return t
 
 def find_matches(doc, original_text):
+    """
+    Find keyword matches in the review using two strategies:
+      1. Substring matching on a normalized version of the original text
+      2. Matching spaCy tokens
+    Returns a list of tuples: (canonical_keyword, matched_surface_text, start_index, end_index).
+    - canonical_keyword is the grouping used in KEYWORD_WEIGHTS (e.g., "quiet").
+    - start_index/end_index are character offsets in the original_text for possible excerpts.
+    """
     matches = []
     norm = normalize_text(original_text)
     keys_sorted = sorted(KEYWORD_WEIGHTS.keys(), key=lambda k: -len(k))
@@ -96,6 +104,10 @@ def find_matches(doc, original_text):
     return uniq
 
 def excerpt_around(text, start, end, max_chars=120):
+    """
+    Return a short excerpt of text around the matched span for presentation purposes
+    Useful for UI/explanations
+    """
     s = max(0, start - max_chars)
     e = min(len(text), end + max_chars)
     excerpt = text[s:e].strip()
@@ -111,6 +123,20 @@ def _map_to_0_100(normalized_value, a=0.6):
     return sig * 100.0
 
 def score_review(review_text):
+    """
+    Analyze a single review string and return:
+      - score_0_100: float in 0..100 (higher -> more study-friendly)
+      - counts: dict mapping canonical keywords -> counts found in this review
+      - keyword_list: list of (keyword, count) pairs for convenience/presentation
+
+    Steps:
+      1. Normalize and skip empty reviews (neutral 50) so that we dont treat empty reviews as extremes
+      2. Run spaCy NLP to proces tokens and lemma
+      3. find_matches() to locate keywords, find occurrences of configured keywords and return the canonical keys and span offsets for each match
+      4. Sum configured weights for matched canonical keywords into a raw_score (convert keyword hits into numbers to affect the raw score)
+      5. Normalize by review length (log scale) so long reviews don't dominate only by length
+      6. Squash normalized value into 0..100 with a sigmoid
+    """
     norm_text = normalize_text(review_text)
     if not norm_text:
         return 50.0, {}, []  # neutral midpoint

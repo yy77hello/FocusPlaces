@@ -12,13 +12,12 @@ Requirements:
 """
 
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 import math
 import spacy
+import datetime
 
-# Load the small English spaCy model. We disable NER because it's not needed here and
-# disabling saves some load-time and memory.
-nlp = spacy.load("en_core_web_sm", disable=["ner"])
+nlp = spacy.load("en_core_web_sm", disable=["ner"])  # small model
 
 KEYWORD_WEIGHTS = {
     "quiet": ("quiet", 3.0), "quietly": ("quiet", 3.0), "noise": ("noise", -2.5), "noisy": ("noise", -3.0),
@@ -37,22 +36,16 @@ KEYWORD_WEIGHTS = {
     "outdoor": ("outdoor", 0.5),
     "friendly": ("staff", 1.0), "helpful": ("staff", 1.0), "rude": ("staff", -1.5),
     "crowded": ("crowded", -2.5), "busy": ("crowded", -1.5), "packed": ("crowded", -2.0), "empty": ("crowded", 1.0),
-    "coffee": ("coffee", 0.5), "food": ("food", 0.0), "noisy-kids": ("family", -2.0), "kids": ("family", -1.5),
-    "children": ("family", -1.5),
+    "coffee": ("coffee", 0.5), "food": ("food", 0.0), "kids": ("family", -1.5), "children": ("family", -1.5),
     "cold": ("temperature", -0.5), "hot": ("temperature", -0.5),
     "open-late": ("hours", 0.5), "open late": ("hours", 0.5), "24/7": ("hours", 1.0), "hours": ("hours", 0.2),
     "reservations": ("reservations", 0.5), "parking": ("parking", 0.2), "plugged": ("outlet", 2.5),
-    "power outlet": ("outlet", 3.0),
 }
 
-# Regex to remove most punctuation but keep word characters, whitespace, hyphen, slash
 PUNCT_RE = re.compile(r"[^\w\s\-/]")
 
+
 def normalize_text(text):
-    """
-    Lowercase and remove unwanted punctuation
-    Collapse whitespace.
-    """
     if not text:
         return ""
     t = text.lower()
@@ -60,15 +53,24 @@ def normalize_text(text):
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
+
+def excerpt_around(text, start, end, max_chars=120):
+    s = max(0, start - max_chars)
+    e = min(len(text), end + max_chars)
+    excerpt = text[s:e].strip()
+    if s > 0:
+        excerpt = "..." + excerpt
+    if e < len(text):
+        excerpt = excerpt + "..."
+    return excerpt
+
+
+def _map_to_0_100(normalized_value, a=0.6):
+    sig = 1.0 / (1.0 + math.exp(-a * normalized_value))
+    return sig * 100.0
+
+
 def find_matches(doc, original_text):
-    """
-    Find keyword matches in the review using two strategies:
-      1. Substring matching on a normalized version of the original text
-      2. Matching spaCy tokens
-    Returns a list of tuples: (canonical_keyword, matched_surface_text, start_index, end_index).
-    - canonical_keyword is the grouping used in KEYWORD_WEIGHTS (e.g., "quiet").
-    - start_index/end_index are character offsets in the original_text for possible excerpts.
-    """
     matches = []
     norm = normalize_text(original_text)
     keys_sorted = sorted(KEYWORD_WEIGHTS.keys(), key=lambda k: -len(k))
@@ -83,16 +85,17 @@ def find_matches(doc, original_text):
             except ValueError:
                 orig_start, orig_end = 0, 0
             canon = KEYWORD_WEIGHTS[key][0]
-            matches.append((canon, original_text[orig_start:orig_end], orig_start, orig_end))
+            matches.append((canon, original_text[orig_start:orig_end], orig_start, orig_end, key))
     for token in doc:
         lemma = token.lemma_.lower()
         if lemma in KEYWORD_WEIGHTS:
             canon = KEYWORD_WEIGHTS[lemma][0]
-            matches.append((canon, token.text, token.idx, token.idx + len(token.text)))
+            matches.append((canon, token.text, token.idx, token.idx + len(token.text), lemma))
         surf = token.text.lower()
         if surf in KEYWORD_WEIGHTS:
             canon = KEYWORD_WEIGHTS[surf][0]
-            matches.append((canon, token.text, token.idx, token.idx + len(token.text)))
+            matches.append((canon, token.text, token.idx, token.idx + len(token.text), surf))
+    # dedupe
     seen = set()
     uniq = []
     for m in matches:
@@ -103,97 +106,126 @@ def find_matches(doc, original_text):
         uniq.append(m)
     return uniq
 
-def excerpt_around(text, start, end, max_chars=120):
-    """
-    Return a short excerpt of text around the matched span for presentation purposes
-    Useful for UI/explanations
-    """
-    s = max(0, start - max_chars)
-    e = min(len(text), end + max_chars)
-    excerpt = text[s:e].strip()
-    if s > 0:
-        excerpt = "..." + excerpt
-    if e < len(text):
-        excerpt = excerpt + "..."
-    return excerpt
-
-def _map_to_0_100(normalized_value, a=0.6):
-    """Map an unbounded normalized value to 0..100 using a sigmoid scaled to that range."""
-    sig = 1.0 / (1.0 + math.exp(-a * normalized_value))
-    return sig * 100.0
 
 def score_review(review_text):
-    """
-    Analyze a single review string and return:
-      - score_0_100: float in 0..100 (higher -> more study-friendly)
-      - counts: dict mapping canonical keywords -> counts found in this review
-      - keyword_list: list of (keyword, count) pairs for convenience/presentation
-
-    Steps:
-      1. Normalize and skip empty reviews (neutral 50) so that we dont treat empty reviews as extremes
-      2. Run spaCy NLP to proces tokens and lemma
-      3. find_matches() to locate keywords, find occurrences of configured keywords and return the canonical keys and span offsets for each match
-      4. Sum configured weights for matched canonical keywords into a raw_score (convert keyword hits into numbers to affect the raw score)
-      5. Normalize by review length (log scale) so long reviews don't dominate only by length
-      6. Squash normalized value into 0..100 with a sigmoid
-    """
     norm_text = normalize_text(review_text)
     if not norm_text:
-        return 50.0, {}, []  # neutral midpoint
-
+        return {
+            "score": 50.0,
+            "counts": {},
+            "keywords": [],
+            "explanations": [],
+        }
     doc = nlp(review_text)
     matches = find_matches(doc, review_text)
     if not matches:
-        return 50.0, {}, []
-
+        return {
+            "score": 50.0,
+            "counts": {},
+            "keywords": [],
+            "explanations": [],
+        }
     counts = Counter()
     raw_score = 0.0
-
-    for canon, span_text, start, end in matches:
-        # find weight for this canonical
+    explanations = []
+    for canon, span_text, start, end, surf in matches:
+        # find any weight for this surface key; fall back to canon mapping
         weight = None
-        for k, v in KEYWORD_WEIGHTS.items():
-            if v[0] == canon:
-                weight = v[1]
-                break
+        if surf in KEYWORD_WEIGHTS:
+            weight = KEYWORD_WEIGHTS[surf][1]
+        else:
+            # find first k with matching canonical
+            for k, v in KEYWORD_WEIGHTS.items():
+                if v[0] == canon:
+                    weight = v[1]
+                    break
         if weight is None:
             continue
         counts[canon] += 1
         raw_score += weight
-
+        explanations.append({
+            "keyword": canon,
+            "matched": span_text,
+            "surface": surf,
+            "weight": weight,
+            "excerpt": excerpt_around(review_text, start, end, max_chars=80),
+            "span": (start, end),
+        })
     word_count = len([t for t in doc if not t.is_punct and not t.is_space])
     length_factor = math.log1p(word_count) if word_count > 0 else 1.0
     normalized = raw_score / length_factor
-
     score_0_100 = _map_to_0_100(normalized, a=0.6)
     score_0_100 = max(0.0, min(100.0, score_0_100))
+    keyword_list = list(counts.items())
+    return {
+        "score": score_0_100,
+        "counts": dict(counts),
+        "keywords": keyword_list,
+        "explanations": explanations,
+    }
 
-    # return counts as keyword list instead of excerpts
-    keyword_list = list(counts.items())  # list of (keyword, count)
-    return score_0_100, dict(counts), keyword_list
 
-
-def process_place_reviews(place):
+def process_place_reviews(place, recent_days=365):
     reviews = place.get("reviews", []) or []
     per_review = []
     total = 0.0
     total_counts = Counter()
+    now = datetime.datetime.utcnow()
+    cutoff = now - datetime.timedelta(days=recent_days)
 
     for i, rev in enumerate(reviews):
         text = rev.get("text", "") if isinstance(rev, dict) else str(rev)
-        score, counts, keyword_list = score_review(text)
+        # Google's review object may include 'time' (unix epoch)
+        review_time = None
+        if isinstance(rev, dict):
+            t = rev.get("time")
+            if isinstance(t, (int, float)):
+                try:
+                    review_time = datetime.datetime.utcfromtimestamp(int(t))
+                except Exception:
+                    review_time = None
+        # include review if no time provided (conservative: include) or if recent
+        is_recent = True if review_time is None else (review_time >= cutoff)
+        scored = score_review(text)
         per_review.append({
             "index": i,
-            "score": score,           # 0..100
-            "counts": counts,         # Counter dict for this review
-            "keywords": keyword_list, # list of (keyword, count)
+            "score": scored.get("score"),
+            "counts": scored.get("counts"),
+            "keywords": scored.get("keywords"),
+            "explanations": scored.get("explanations"),
             "raw_text": text,
+            "time": review_time.isoformat() if review_time else None,
+            "is_recent": is_recent,
         })
-        total += score
-        total_counts.update(counts)
+        # aggregate only recent reviews into the place-level score
+        if is_recent:
+            total += scored.get("score", 50.0)
+            total_counts.update(scored.get("counts", {}))
 
-    review_count = len(reviews) if reviews else 1
-    average = total / review_count  # already in 0..100 space
+    recent_review_count = sum(1 for r in per_review if r.get("is_recent"))
+    review_count = len(reviews)
+    review_count_for_average = recent_review_count if recent_review_count > 0 else 1
+    average = total / review_count_for_average
+
+    # build explainability summary
+    pos = []
+    neg = []
+    for k, cnt in total_counts.items():
+        # find a representative weight for the canonical keyword
+        weight = None
+        for kk, vv in KEYWORD_WEIGHTS.items():
+            if vv[0] == k:
+                weight = vv[1]
+                break
+        if weight is None:
+            weight = 0.0
+        score_contrib = weight * cnt
+        if score_contrib >= 0:
+            pos.append((k, cnt, score_contrib))
+        else:
+            neg.append((k, cnt, score_contrib))
+    pos.sort(key=lambda x: -x[2])
+    neg.sort(key=lambda x: x[2])
 
     result = {
         "place_id": place.get("place_id"),
@@ -202,15 +234,18 @@ def process_place_reviews(place):
         "focus_average": average,
         "focus_score_0_100": int(round(max(0.0, min(100.0, average)))),
         "keyword_counts": dict(total_counts),
+        "positive_factors": [(k, c) for k, c, s in pos],
+        "negative_factors": [(k, c) for k, c, s in neg],
         "per_review": per_review,
-        "review_count": len(reviews),
+        "review_count": review_count,
+        "recent_review_count": recent_review_count,
     }
     return result
 
 
-def process_places(places):
+def process_places(places, recent_days=365):
     processed = []
     for p in places:
-        processed.append(process_place_reviews(p))
+        processed.append(process_place_reviews(p, recent_days=recent_days))
     processed.sort(key=lambda x: x.get("focus_score_0_100", 0), reverse=True)
     return processed

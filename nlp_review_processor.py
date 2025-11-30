@@ -19,27 +19,65 @@ import datetime
 
 nlp = spacy.load("en_core_web_sm", disable=["ner"])  # small model
 
+
 KEYWORD_WEIGHTS = {
-    "quiet": ("quiet", 3.0), "quietly": ("quiet", 3.0), "noise": ("noise", -2.5), "noisy": ("noise", -3.0),
-    "loud": ("noise", -3.0), "calm": ("quiet", 2.0), "peaceful": ("quiet", 2.5),
-    "wifi": ("wifi", 3.0), "wi-fi": ("wifi", 3.0), "internet": ("wifi", 2.5), "connection": ("wifi", 1.5),
-    "outlet": ("outlet", 3.0), "outlets": ("outlet", 3.0), "plug": ("outlet", 2.5), "power": ("outlet", 1.5),
-    "comfortable": ("comfort", 2.5), "comfort": ("comfort", 2.0), "seat": ("comfort", 1.5), "seating": ("comfort", 1.5),
-    "chairs": ("comfort", 1.5), "chair": ("comfort", 1.5), "ergonomic": ("comfort", 2.5), "cozy": ("comfort", 1.5),
-    "lighting": ("lighting", 2.0), "bright": ("lighting", 1.5), "dim": ("lighting", -1.0), "well-lit": ("lighting", 2.0),
-    "dark": ("lighting", -1.5),
-    "study": ("study", 3.0), "focused": ("study", 2.5), "focus": ("study", 2.5), "productive": ("study", 2.5),
-    "productivity": ("study", 2.0),
-    "laptop": ("laptop", 2.5), "laptops": ("laptop", 2.5), "work": ("work", 2.0), "workspace": ("work", 2.5),
-    "desk": ("work", 2.0),
-    "tables": ("tables", 1.5), "table": ("tables", 1.5), "restroom": ("amenities", 0.5), "bathroom": ("amenities", 0.5),
-    "outdoor": ("outdoor", 0.5),
-    "friendly": ("staff", 1.0), "helpful": ("staff", 1.0), "rude": ("staff", -1.5),
-    "crowded": ("crowded", -2.5), "busy": ("crowded", -1.5), "packed": ("crowded", -2.0), "empty": ("crowded", 1.0),
-    "coffee": ("coffee", 0.5), "food": ("food", 0.0), "kids": ("family", -1.5), "children": ("family", -1.5),
-    "cold": ("temperature", -0.5), "hot": ("temperature", -0.5),
-    "open-late": ("hours", 0.5), "open late": ("hours", 0.5), "24/7": ("hours", 1.0), "hours": ("hours", 0.2),
-    "reservations": ("reservations", 0.5), "parking": ("parking", 0.2), "plugged": ("outlet", 2.5),
+"quiet": ("quiet", 3.0), "quietly": ("quiet", 3.0), "noise": ("noise", -2.5), "noisy": ("noise", -3.0),
+"loud": ("noise", -3.0), "calm": ("quiet", 2.0), "peaceful": ("quiet", 2.5),
+"wifi": ("wifi", 3.0), "wi-fi": ("wifi", 3.0), "internet": ("wifi", 2.5), "connection": ("wifi", 1.5),
+"outlet": ("outlet", 3.0), "outlets": ("outlet", 3.0), "plug": ("outlet", 2.5), "power": ("outlet", 1.5),
+"comfortable": ("comfort", 2.5), "comfort": ("comfort", 2.0), "seat": ("comfort", 1.5), "seating": ("comfort", 1.5),
+"chairs": ("comfort", 1.5), "chair": ("comfort", 1.5), "ergonomic": ("comfort", 2.5), "cozy": ("comfort", 1.5),
+"lighting": ("lighting", 2.0), "bright": ("lighting", 1.5), "dim": ("lighting", -1.0), "well-lit": ("lighting", 2.0),
+"dark": ("lighting", -1.5),
+"study": ("study", 3.0), "focused": ("study", 2.5), "focus": ("study", 2.5), "productive": ("study", 2.5),
+"productivity": ("study", 2.0),
+"laptop": ("laptop", 2.5), "laptops": ("laptop", 2.5), "work": ("work", 2.0), "workspace": ("work", 2.5),
+"desk": ("work", 2.0),
+"tables": ("tables", 1.5), "table": ("tables", 1.5), "restroom": ("amenities", 0.5), "bathroom": ("amenities", 0.5),
+"outdoor": ("outdoor", 0.5),
+"friendly": ("staff", 1.0), "helpful": ("staff", 1.0), "rude": ("staff", -1.5), "rude staff": ("staff", -2.5),
+"crowded": ("crowded", -2.5), "busy": ("crowded", -1.5), "packed": ("crowded", -2.0), "empty": ("crowded", 1.0),
+"coffee": ("coffee", 0.5), "food": ("food", 0.0), "kids": ("family", -1.5), "children": ("family", -1.5),
+"cold": ("temperature", -0.5), "hot": ("temperature", -0.5),
+"open-late": ("hours", 0.5), "open late": ("hours", 0.5), "24/7": ("hours", 1.0), "hours": ("hours", 0.2),
+"reservations": ("reservations", 0.5), "parking": ("parking", 0.2), "plugged": ("outlet", 2.5),
+# social-safety keywords
+"police called": ("policing", -4.0), "called the police": ("policing", -4.0), "police": ("policing", -3.5),
+"officers": ("policing", -2.0), "security": ("policing", -2.5),
+"evicted": ("eviction", -3.5), "evict": ("eviction", -3.5), "forced out": ("eviction", -3.5), "kicked out": ("eviction", -3.5),
+"pushed out": ("eviction", -3.5), "removed": ("eviction", -2.5), "chased": ("eviction", -3.0),
+"harass": ("harassment", -3.5), "harassed": ("harassment", -3.5), "harassment": ("harassment", -3.5),
+"bully": ("harassment", -3.0), "bullied": ("harassment", -3.0), "intimidate": ("harassment", -3.0), "intimidated": ("harassment", -3.0),
+"abuse": ("harassment", -3.5), "assault": ("safety", -4.0), "threaten": ("safety", -3.5), "threatened": ("safety", -3.5),
+"unsafe": ("safety", -3.5), "dangerous": ("safety", -3.5), "scared": ("safety", -2.0), "frightened": ("safety", -2.0),
+"intimidated": ("safety", -2.5),
+
+# discrimination / prejudice / stigma
+"homeless": ("discrimination", -4.0), "homelessness": ("discrimination", -3.5), "we were": ("discrimination", -0.5),
+"discriminate": ("discrimination", -3.5), "discriminated": ("discrimination", -4.0), "profiling": ("discrimination", -3.5),
+"prejudice": ("discrimination", -3.0), "racist": ("discrimination", -4.0), "racism": ("discrimination", -4.0),
+"don't belong": ("discrimination", -3.0), "do not belong": ("discrimination", -3.0),
+
+# compassion / empathy / humanity
+"empathy": ("compassion", 2.0), "empathize": ("compassion", 2.0), "compassion": ("compassion", 2.5),
+"no compassion": ("compassion", -3.0), "no humanity": ("compassion", -3.5), "humanity": ("compassion", 2.0),
+"kind": ("compassion", 1.5), "kindness": ("compassion", 2.0), "understanding": ("compassion", 2.0),
+"humiliated": ("emotion", -3.0), "humiliation": ("emotion", -3.0), "ashamed": ("emotion", -2.5),
+
+# service refusal / exclusion
+"refuse service": ("service", -3.5), "refused service": ("service", -3.5), "denied": ("service", -2.5),
+"not allowed": ("service", -2.5), "banned": ("service", -3.0), "not welcome": ("service", -3.0), "unwanted": ("service", -2.5),
+
+# negative sentiment / hostility
+"hostile": ("hostility", -3.0), "hostility": ("hostility", -3.0), "aggressive": ("hostility", -3.0), "rude": ("hostility", -2.0),
+"mean": ("hostility", -2.0), "heartbreaking": ("emotion", -1.5), "sad": ("emotion", -1.0),
+
+# phrases capturing being targeted for using amenities
+"using public wi-fi": ("policing", -3.5), "using public wifi": ("policing", -3.5),
+"using the wifi": ("policing", -1.0), "sitting on a bench": ("eviction", -2.5),
+
+# keep existing neutrals/positives for compatibility
+"wifi": ("wifi", 3.0), "internet": ("wifi", 2.5),
 }
 
 PUNCT_RE = re.compile(r"[^\w\s\-/]")

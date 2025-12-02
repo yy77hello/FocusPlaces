@@ -97,15 +97,17 @@ if run:
                 loc = g
                 st.success(f"Geocoded to: {g[0]:.6f}, {g[1]:.6f}")
             else:
-                st.warning("Could not geocode address; searches will be global/broad")
+                st.warning(
+                    "Could not geocode address; searches will be global/broad. Please check that your API key has the Geocoding API enabled and is not IP-restricted.")
         except Exception as e:
-            st.error(f"Geocoding failed: {e}")
+            st.error(
+                f"Geocoding failed: {e}. Ensure your API key has Geocoding API enabled and proper billing/unrestricted access.")
 
     with st.spinner("Searching and processing (this may take a moment)..."):
         processed = search_and_process(
             queries,
-            location=loc,
-            radius=radius,
+            location=loc,  # loc is None or (lat, lng)
+            radius=radius,  # radius already computed in meters earlier
             max_candidates=max_candidates,
             max_reviews_per_place=max_reviews_per_place,
             recent_days=recent_days,

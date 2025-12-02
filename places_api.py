@@ -34,35 +34,52 @@ def geocode_address(address):
     resp = requests.get(GEOCODE_URL, params=params)
     resp.raise_for_status()
     data = resp.json()
+    # Return the full response for debugging if needed, but normally return (lat,lng) or None
     results = data.get("results", [])
     if not results:
+        # include status in debug via exception-free return
         return None
     loc = results[0].get("geometry", {}).get("location")
-    return (loc.get("lat"), loc.get("lng")) if loc else None
+    if not loc:
+        return None
+    try:
+        lat = float(loc.get("lat"))
+        lng = float(loc.get("lng"))
+        return (lat, lng)
+    except Exception:
+        return None
 
 
 def make_textsearch_request(params):
     resp = requests.get(TEXT_SEARCH_URL, params=params)
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+    status = data.get("status")
+    if status and status not in ("OK", "ZERO_RESULTS"):
+        raise RuntimeError(f"Places Text Search returned status: {status} for params: {params}")
+    return data
 
 
 def text_search(query, location=None, radius=5000, max_results=10):
     candidates = []
-    params = {
+    base_params = {
         "query": query,
         "key": API_KEY,
     }
     if location:
         lat, lng = location
-        params["location"] = f"{lat},{lng}"
-        params["radius"] = radius
+        base_params["location"] = f"{float(lat)},{float(lng)}"
+        base_params["radius"] = int(radius)
 
     remaining = max_results
     next_token = None
+    # We must preserve the original params for the initial request.
+    # For subsequent requests with next_page_token, only pagetoken and key are allowed.
     while True:
         if next_token:
             params = {"pagetoken": next_token, "key": API_KEY}
+        else:
+            params = base_params.copy()
         data = make_textsearch_request(params)
         results = data.get("results", [])
         for r in results:
@@ -82,6 +99,7 @@ def text_search(query, location=None, radius=5000, max_results=10):
         next_token = data.get("next_page_token")
         if not next_token:
             break
+        # According to Google API, need to wait briefly before using next_page_token
         time.sleep(2)
     return candidates
 

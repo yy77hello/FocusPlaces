@@ -5,11 +5,9 @@
 FocusPlaces helps students find the best spots for focused work (cafes, libraries, co‑working spaces) by combining Google Places data with review text analysis and user preferences to produce a transparent "focus score" and human‑readable explanations.
 
 ## Features
-- Search for candidate locations via Google Places (search terms like "coffee shop", "library", "co‑working space") with a max candidate
-counter for users to change.
+- Search for candidate locations via Google Places (search terms like "coffee shop", "library", "co‑working space") with a max candidate counter for users to change.
 - Compute a "focus score" for each place combining Google rating and frequency of study‑relevant keywords in recent reviews.
-- Let users set preference weights that adjust the heuristic, recent time window in days, radius, minimum recent reviews, and max reviews
-per place to fetch.
+- Settings allow users to define custom query keywords, set how recent reviews must be to be considered, set a minimum number of recent reviews required for a score to be considered reliable, enter a custom location and radius, choose maximum candidates per query (e.g., 5 will return 5 places for "library", 5 places for "co‑working space", etc.), and set the maximum reviews per place to fetch.
 - Extract review excerpts that contain matched keywords for explainability.
 - Streamlit UI with progress feedback and a results page showing scores, explanations, and an embedded clickable map.
 - Allows users to enter a specific address to start from (default = current location)
@@ -32,19 +30,19 @@ per place to fetch.
 5. Install dependencies:
    python -m pip install --upgrade pip
    pip install -r requirements.txt
-   (If requirements.txt already includes all packages you can skip the next two extra pip install line.)
+   (If requirements.txt already includes all packages you can skip the next two extra pip install lines.)
    pip install spacy python-dotenv requests
    pip install requests python-dotenv spacy streamlit
 6. Download the spaCy English model:
    python -m spacy download en_core_web_sm
    (Alternatively, for offline environments install a model wheel:
    pip install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl)
-7. Ensure all 3 Python files (nlp_review_processor.py, streamlit_app.py, and the main script) are in the same directory, then run:
-   python your_second_file.py for the demo OR
-   streamlit run streamlit_app.py for the full UI
+7. Ensure all Python files (nlp_review_processor.py, streamlit_app.py, and the main script) are in the same directory.
+8. Run the app:
+   streamlit run .\streamlit_app.py
 
 ## Configuration
-- Place preferences and weighting adjustments can be configured in the preferences section of the Streamlit UI or by editing the config file (if provided).
+- Place preferences and other settings can be configured in the Streamlit UI (preferences/settings panel) or by editing the config file (if provided). Configurable options include custom query keywords, recency window for reviews, minimum recent reviews required, custom start location & radius, maximum candidates per query, and max reviews fetched per place.
 
 ## Files
 - nlp_review_processor.py: computes per‑review and per‑place "focus" scores from review text (requires spaCy/en_core_web_sm).
@@ -54,4 +52,4 @@ per place to fetch.
 
 ## Notes
 - Ensure your Google Places API key has billing enabled and the necessary APIs turned on.
-- Reviews returned by the Places Details endpoint are limited; the script fetches up to a small number of recent reviews per place.
+- Reviews returned by the Places Details endpoint are limited; the script fetches up to a configurable number of recent reviews per place.

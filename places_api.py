@@ -1,4 +1,3 @@
-<<<<<<< Updated upstream
 """
  - Loads GOOGLE_PLACES_API_KEY from .env
  - Runs a Text Search for a query near a location (or by text)
@@ -172,7 +171,7 @@ if __name__ == '__main__':
     res = search_and_process(q, location=None, radius=10000, max_candidates=10)
     for r in res[:10]:
         print(r.get('name'), r.get('focus_score_0_100'), r.get('recent_reviews_warning'))
-=======
+
 """
  - Loads GOOGLE_PLACES_API_KEY from .env
  - Runs a Text Search for a query near a location (or by text)
@@ -413,4 +412,3 @@ def example_flow():
 
 if __name__ == "__main__":
     example_flow()
->>>>>>> Stashed changes

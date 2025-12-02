@@ -116,6 +116,12 @@ def fetch_place_details(place_id, max_reviews=5):
     resp.raise_for_status()
     data = resp.json()
     result = data.get("result", {})
+    # Normalize fields: explicitly set None when missing
+    name = result.get("name") if "name" in result else None
+    rating = result.get("rating") if "rating" in result else None
+    user_ratings_total = result.get("user_ratings_total") if "user_ratings_total" in result else None
+    formatted_address = result.get("formatted_address") if "formatted_address" in result else None
+    location = (result.get("geometry", {}).get("location") if result.get("geometry") else None)
     reviews = []
     for rev in result.get("reviews", [])[:max_reviews]:
         reviews.append({
@@ -126,12 +132,12 @@ def fetch_place_details(place_id, max_reviews=5):
             "time": rev.get("time") if "time" in rev else None,
         })
     return {
-        "name": result.get("name"),
+        "name": name,
         "place_id": place_id,
-        "rating": result.get("rating"),
-        "user_ratings_total": result.get("user_ratings_total"),
-        "formatted_address": result.get("formatted_address"),
-        "location": result.get("geometry", {}).get("location"),
+        "rating": rating,
+        "user_ratings_total": user_ratings_total,
+        "formatted_address": formatted_address,
+        "location": location,
         "reviews": reviews,
     }
 
@@ -151,22 +157,51 @@ def top_contributing_review(processed_place):
 def search_and_process(queries, location=None, radius=10000, max_candidates=20, max_reviews_per_place=5, recent_days=365, min_recent_reviews=3):
     candidates = text_search_multi(queries, location=location, radius=radius, max_results_per_query=max_candidates)
     detailed = []
+    # Build detailed list with explicit fallbacks from text-search candidate 'c'
     for c in candidates:
         pid = c.get("place_id")
         time.sleep(0.1)
-        details = fetch_place_details(pid, max_reviews=max_reviews_per_place)
-        details["formatted_address"] = details.get("formatted_address") or c.get("formatted_address")
-        details["rating"] = details.get("rating") if details.get("rating") is not None else c.get("rating")
-        details["user_ratings_total"] = details.get("user_ratings_total") if details.get("user_ratings_total") is not None else c.get("user_ratings_total")
-        details["location"] = details.get("location") or c.get("location")
+        details = fetch_place_details(pid, max_reviews=max_reviews_per_place) or {}
+        # Use explicit "is None" checks so falsy but valid values (0) are preserved
+        if details.get("formatted_address") is None:
+            details["formatted_address"] = c.get("formatted_address")
+        if details.get("rating") is None:
+            details["rating"] = c.get("rating")
+        if details.get("user_ratings_total") is None:
+            details["user_ratings_total"] = c.get("user_ratings_total")
+        if details.get("location") is None:
+            details["location"] = c.get("location")
+        # Ensure place_id and name exist
+        if details.get("place_id") is None:
+            details["place_id"] = pid
+        if details.get("name") is None:
+            details["name"] = c.get("name")
         detailed.append(details)
-    processed = process_places(detailed, recent_days=recent_days)
+
+    processed = process_places(detailed, recent_days=recent_days) or []
+
+    # Copy core metadata back onto processed entries so streamlit can display them reliably
+    # Build map by place_id from detailed list
+    detailed_by_id = {d.get("place_id"): d for d in detailed if d.get("place_id")}
     for p in processed:
+        pid = p.get("place_id")
+        src = detailed_by_id.get(pid, {})
+        # Only set if missing in processed or is None
+        if p.get("formatted_address") is None:
+            p["formatted_address"] = src.get("formatted_address")
+        if p.get("rating") is None:
+            p["rating"] = src.get("rating")
+        if p.get("user_ratings_total") is None:
+            p["user_ratings_total"] = src.get("user_ratings_total")
+        if p.get("location") is None:
+            p["location"] = src.get("location")
+
         if p.get("recent_review_count", 0) < min_recent_reviews:
             p["recent_reviews_warning"] = True
             p["recent_reviews_warning_text"] = f"Only {p.get('recent_review_count',0)} recent reviews in the last {recent_days} days (minimum {min_recent_reviews}). Results may be unreliable."
         else:
             p["recent_reviews_warning"] = False
+
     return processed
 
 

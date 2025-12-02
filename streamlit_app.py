@@ -118,7 +118,8 @@ if run:
         else:
             st.write(f"Found {len(processed)} places (sorted by focus score)")
             for p in processed:
-                cols = st.columns([3, 1, 1, 1])
+                # Slightly wider main column, compact middle and right columns
+                cols = st.columns([4.5, 0.9, 0.6])
                 name_display = p.get("name") or "Unknown"
                 with cols[0]:
                     st.markdown(f"### {name_display}")
@@ -195,7 +196,5 @@ if run:
                 with cols[1]:
                     st.metric("Score", p.get("focus_score_0_100"))
                 with cols[2]:
-                    st.write(" ")
-                with cols[3]:
                     maps_url = f"https://www.google.com/maps/place/?q=place_id:{p.get('place_id')}"
                     st.markdown(f"[Open in Google Maps]({maps_url})")
